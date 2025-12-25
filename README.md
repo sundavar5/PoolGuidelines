@@ -10,7 +10,7 @@ This Python script creates a transparent overlay on your screen to help visualiz
   - The "Ghost Ball" aiming point for each pocket.
   - The aiming line for the Cue Ball.
 - **Moveable Pockets**: Drag circles to align the overlay with your game's table.
-- **Tuning**: Adjust detection sensitivity for different ball sizes.
+- **Interactive Tuning**: Resize the target marker to match real balls for accurate detection.
 
 ## Requirements
 
@@ -47,27 +47,33 @@ This Python script creates a transparent overlay on your screen to help visualiz
 ## Usage
 
 1. **Align Pockets**: Drag the 6 black circles to match the pockets of the pool table on your screen.
-2. **Scan Screen**: Press **`s`** to scan the table. The overlay will briefly flicker as it captures the screen.
-3. **Select Ball**: Click on any **Orange** circle (detected ball). It will turn **Cyan**, and lines will appear showing the shot path to every pocket.
-4. **Tune Detection** (If balls aren't detected):
-   - Press **`Up Arrow`** to increase the expected ball radius.
-   - Press **`Down Arrow`** to decrease the expected ball radius.
-   - Re-scan with `s` after adjusting.
+2. **Calibrate Size**:
+   - Place the **Cyan** "Target Ball" circle over a real ball on the screen.
+   - **Scroll Mouse Wheel** to resize the circle until it matches the ball size perfectly.
+   - *This step is crucial for the auto-detection to work.*
+3. **Scan Screen**: Press **`s`** to scan. The overlay will flicker as it captures the screen.
+4. **Select Ball**: Click on any **Orange** circle (detected ball). It will turn **Cyan**, and lines will appear showing the shot path to every pocket.
 
 ## Controls
 
 - **`s`**: Scan for balls.
+- **Mouse Wheel**: Resize the Target Ball (for calibration).
+- **Left/Right Arrows**: Adjust detection sensitivity (Left=More sensitive, Right=Less).
 - **Left Click + Drag**: Move pockets manually.
 - **Left Click**: Select a detected ball.
-- **`Up/Down Arrows`**: Adjust detection size.
 - **`q`** or **`Esc`**: Quit.
 
 ## Troubleshooting
 
+### No Balls Detected?
+1. **Check Size**: Ensure the Cyan circle matches the real ball size. The detector looks for circles of that exact size (+/- 5 pixels).
+2. **Adjust Sensitivity**: Press **Left Arrow** to lower the sensitivity threshold (allow weaker circles). Watch the status text on screen.
+3. **Debug**: The script saves `debug_gray_TIMESTAMP.png` when scanning. Check this image to see if the screen capture is working and if the balls are visible in grayscale.
+
 ### Installation Errors
 If you see an error like `metadata-generation-failed`, `Failed to activate VS environment`, or `Unknown compiler` when installing requirements:
-- **Cause**: You are likely using a very new version of Python (e.g., Python 3.13 or 3.14) for which pre-built libraries are not yet available.
-- **Solution**: Please install **Python 3.12** (or 3.10/3.11) and try again. Python 3.12 is currently the most stable version for these data science libraries.
+- **Cause**: You are likely using a very new version of Python (e.g., Python 3.13 or 3.14).
+- **Solution**: Please install **Python 3.12** and try again.
 
 ### Transparency Issues
 - **Windows**: The script uses a specific background color (`grey15`) and sets it to be transparent. Ensure you are running in a windowed mode if possible if the overlay doesn't appear on top.
