@@ -14,7 +14,8 @@ This Python script creates a transparent overlay on your screen to help visualiz
 
 ## Requirements
 
-- Python 3.x
+- **Python 3.10, 3.11, or 3.12** (Recommended)
+    - *Note: Python 3.13+ may fail to install dependencies without a C++ compiler.*
 - Tkinter (usually included with Python)
 - OpenCV (cv2)
 - NumPy
@@ -22,7 +23,13 @@ This Python script creates a transparent overlay on your screen to help visualiz
 
 ## Installation
 
-1. Install the required Python packages:
+1. **Check your Python version**:
+   Run the included check script to ensure your environment is ready:
+   ```bash
+   python check_setup.py
+   ```
+
+2. **Install the required Python packages**:
    ```bash
    pip install opencv-python numpy mss
    ```
@@ -57,5 +64,11 @@ This Python script creates a transparent overlay on your screen to help visualiz
 
 ## Troubleshooting
 
-- **Transparency on Windows**: The script uses a specific background color (`grey15`) and sets it to be transparent.
-- **Transparency on Mac/Linux**: The script uses window-wide alpha transparency (`-alpha`). You can adjust this in the code if needed.
+### Installation Errors
+If you see an error like `metadata-generation-failed`, `Failed to activate VS environment`, or `Unknown compiler` when installing requirements:
+- **Cause**: You are likely using a very new version of Python (e.g., Python 3.13 or 3.14) for which pre-built libraries are not yet available.
+- **Solution**: Please install **Python 3.12** (or 3.10/3.11) and try again. Python 3.12 is currently the most stable version for these data science libraries.
+
+### Transparency Issues
+- **Windows**: The script uses a specific background color (`grey15`) and sets it to be transparent. Ensure you are running in a windowed mode if possible if the overlay doesn't appear on top.
+- **Mac/Linux**: The script uses window-wide alpha transparency (`-alpha`). You can adjust this in the code if needed.
