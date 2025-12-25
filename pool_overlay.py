@@ -1,6 +1,9 @@
 import tkinter as tk
+from tkinter import ttk
 import math
 import os
+import time
+from vision import ScreenCapture, BallDetector
 
 # --- Geometry / Math Functions ---
 
@@ -30,31 +33,21 @@ def distance(p1, p2):
 def calculate_ghost_ball_pos(target_pos, pocket_pos, ball_diameter):
     """
     Calculates the Ghost Ball position.
-    The Ghost Ball is the position the Cue Ball must be in at the moment of impact
-    to send the Target Ball into the Pocket.
-    It is located one ball diameter away from the Target Ball,
-    along the line extending from the Pocket through the Target Ball.
     """
-    # Vector from Target to Pocket
     vec_t_to_p = subtract_vectors(pocket_pos, target_pos)
-
-    # Direction from Target to Pocket
     direction = normalize_vector(vec_t_to_p)
-
-    # We want to go backwards from the Target (away from pocket) by one ball diameter
-    # Ghost Pos = Target Pos - (Direction * Ball Diameter)
     offset = scale_vector(direction, ball_diameter)
     ghost_pos = subtract_vectors(target_pos, offset)
-
     return ghost_pos
 
 # --- UI Classes ---
 
 class DraggablePoint:
-    def __init__(self, canvas, x, y, color, radius=10, name="point"):
+    def __init__(self, canvas, x, y, color, radius=10, name="point", on_click_callback=None):
         self.canvas = canvas
         self.radius = radius
         self.name = name
+        self.on_click_callback = on_click_callback
         self.id = canvas.create_oval(
             x - radius, y - radius, x + radius, y + radius,
             fill=color, outline="white", width=2, tags=name
@@ -71,6 +64,8 @@ class DraggablePoint:
     def on_press(self, event):
         self._drag_data["x"] = event.x
         self._drag_data["y"] = event.y
+        if self.on_click_callback:
+            self.on_click_callback(self)
 
     def on_drag(self, event):
         dx = event.x - self._drag_data["x"]
@@ -80,12 +75,10 @@ class DraggablePoint:
         self._drag_data["x"] = event.x
         self._drag_data["y"] = event.y
 
-        # Update center coordinates
         coords = self.canvas.coords(self.id)
         self.center_x = (coords[0] + coords[2]) / 2
         self.center_y = (coords[1] + coords[3]) / 2
 
-        # Notify the main app to redraw lines
         self.canvas.event_generate("<<PointMoved>>")
 
     def on_release(self, event):
@@ -94,90 +87,149 @@ class DraggablePoint:
     def get_position(self):
         return (self.center_x, self.center_y)
 
+    def set_position(self, x, y):
+        self.canvas.coords(self.id, x - self.radius, y - self.radius, x + self.radius, y + self.radius)
+        self.center_x = x
+        self.center_y = y
+
+    def destroy(self):
+        self.canvas.delete(self.id)
+
 class PoolOverlay:
     def __init__(self, root):
         self.root = root
         self.root.title("Pool Guideline Overlay")
 
-        # Make window full screen and transparent
+        # Screen dimensions
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight()
         self.root.geometry(f"{screen_width}x{screen_height}+0+0")
 
-        # Keep window on top
         self.root.wm_attributes("-topmost", True)
-        self.root.overrideredirect(True) # Remove title bar
+        self.root.overrideredirect(True)
 
-        # Transparency handling
         self.bg_color = "grey15"
-        if os.name == "nt": # Windows
+        if os.name == "nt":
             self.root.config(bg=self.bg_color)
             self.root.wm_attributes("-transparentcolor", self.bg_color)
-            self.alpha_mode = False
         else:
-            # Linux/Mac (Alpha transparency is the best we can do easily)
             self.root.attributes('-alpha', 0.5)
             self.root.config(bg=self.bg_color)
-            self.alpha_mode = True
 
         self.canvas = tk.Canvas(root, width=screen_width, height=screen_height,
                                 bg=self.bg_color, highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
 
-        # Instructions
         self.instructions = self.canvas.create_text(
             screen_width // 2, 30,
-            text="Drag circles to align pockets. Drag Cyan circle to Target Ball.\nPress 'q' or 'Esc' to Quit.",
+            text="Press 's' to Scan for balls. Click a detected ball to see paths to ALL pockets.\nDrag Pockets to Align. Press 'q' to Quit.",
             fill="yellow", font=("Arial", 14)
         )
 
-        # Initialize Pockets (Standard Pool Table layout approx)
-        # Using relative positions to screen size
+        # Vision Components
+        self.capture = ScreenCapture()
+        self.detector = BallDetector()
+
+        # Initialize Pockets
         cx, cy = screen_width // 2, screen_height // 2
-        w, h = 400, 200 # Approx table size, user adjusts
+        w, h = 400, 200
 
         self.pockets = []
         pocket_positions = [
-            (cx - w, cy - h), (cx, cy - h), (cx + w, cy - h), # Top Row
-            (cx - w, cy + h), (cx, cy + h), (cx + w, cy + h)  # Bottom Row
+            (cx - w, cy - h), (cx, cy - h), (cx + w, cy - h),
+            (cx - w, cy + h), (cx, cy + h), (cx + w, cy + h)
         ]
 
         for i, pos in enumerate(pocket_positions):
             p = DraggablePoint(self.canvas, pos[0], pos[1], color="black", radius=15, name=f"pocket_{i}")
             self.pockets.append(p)
 
-        # Initialize Target Ball
-        self.target_ball = DraggablePoint(self.canvas, cx, cy, color="cyan", radius=12, name="target")
-        self.ball_diameter = 24 # Approx visual diameter (2 * radius)
+        # Detected Balls Management
+        self.detected_balls = []
+        self.selected_ball = None # Currently selected ball for aiming
+        self.ball_diameter = 24 # Default, updated by detection
 
-        # Store Line IDs
         self.wall_lines = []
         self.trajectory_lines = []
-        self.ghost_ball_id = None
-        self.aim_line_id = None
 
-        # Bind event for redraw
         self.canvas.bind("<<PointMoved>>", self.redraw)
 
-        # Quit bindings
         self.root.bind("<q>", lambda e: root.destroy())
         self.root.bind("<Escape>", lambda e: root.destroy())
+        self.root.bind("<s>", self.scan_balls)
 
+        # Settings Panel (Hidden by default, toggleable?)
+        # For simplicity, we just put it in a separate Toplevel if needed,
+        # or just keybindings. Let's use keybindings for tuning for now to avoid cluttering the overlay.
+        self.root.bind("<Up>", lambda e: self.tune_radius(1))
+        self.root.bind("<Down>", lambda e: self.tune_radius(-1))
+
+        self.redraw(None)
+
+    def tune_radius(self, delta):
+        self.detector.minRadius = max(5, self.detector.minRadius + delta)
+        self.detector.maxRadius = max(self.detector.minRadius + 5, self.detector.maxRadius + delta)
+        print(f"Radius Tuned: Min={self.detector.minRadius}, Max={self.detector.maxRadius}")
+        self.canvas.itemconfig(self.instructions, text=f"Scan Radius: {self.detector.minRadius}-{self.detector.maxRadius}. Press 's' to Scan.")
+
+    def scan_balls(self, event):
+        # 1. Hide Window
+        self.root.withdraw()
+        self.root.update()
+        time.sleep(0.2) # Wait for animation
+
+        # 2. Capture
+        img = self.capture.capture()
+
+        # 3. Restore Window
+        self.root.deiconify()
+
+        # 4. Detect
+        balls = self.detector.detect(img)
+        print(f"Detected {len(balls)} balls.")
+
+        # 5. Update UI
+        self.clear_detected_balls()
+        if balls:
+            # Update average diameter estimate
+            avg_r = sum(b[2] for b in balls) / len(balls)
+            self.ball_diameter = avg_r * 2
+
+            for b in balls:
+                x, y, r = b
+                # Create a DraggablePoint for each detected ball (so we can tweak if needed)
+                # Color them orange to distinguish from user manual target
+                dp = DraggablePoint(
+                    self.canvas, x, y, color="orange", radius=r,
+                    name="detected_ball", on_click_callback=self.select_ball
+                )
+                self.detected_balls.append(dp)
+
+        self.redraw(None)
+
+    def clear_detected_balls(self):
+        for b in self.detected_balls:
+            b.destroy()
+        self.detected_balls = []
+        self.selected_ball = None
+
+    def select_ball(self, ball_obj):
+        self.selected_ball = ball_obj
+        # Change color to highlight
+        for b in self.detected_balls:
+            self.canvas.itemconfig(b.id, fill="orange")
+        self.canvas.itemconfig(ball_obj.id, fill="cyan")
         self.redraw(None)
 
     def redraw(self, event):
         self.draw_walls()
-        self.draw_trajectory()
+        self.draw_trajectories()
 
     def draw_walls(self):
-        # Clear old lines
         for line in self.wall_lines:
             self.canvas.delete(line)
         self.wall_lines = []
 
-        # Connect pockets to form the table boundary
-        # Order: Top-Left -> Top-Center -> Top-Right -> Bottom-Right -> Bottom-Center -> Bottom-Left -> Top-Left
-        # Indices: 0, 1, 2, 5, 4, 3, 0 (based on initialization order)
         indices = [0, 1, 2, 5, 4, 3, 0]
         points = [self.pockets[i].get_position() for i in indices]
 
@@ -187,67 +239,49 @@ class PoolOverlay:
             line_id = self.canvas.create_line(p1[0], p1[1], p2[0], p2[1], fill="white", width=2, dash=(5, 5))
             self.wall_lines.append(line_id)
 
-    def draw_trajectory(self):
-        # Clear old trajectory items
-        for line in self.trajectory_lines:
-            self.canvas.delete(line)
+    def draw_trajectories(self):
+        # Clear old stuff
+        for item in self.trajectory_lines:
+            self.canvas.delete(item)
         self.trajectory_lines = []
 
-        if self.ghost_ball_id:
-            self.canvas.delete(self.ghost_ball_id)
-            self.ghost_ball_id = None
+        if not self.selected_ball:
+            return
 
-        if self.aim_line_id:
-            self.canvas.delete(self.aim_line_id)
-            self.aim_line_id = None
+        target_pos = self.selected_ball.get_position()
 
-        target_pos = self.target_ball.get_position()
-
-        # Find closest pocket (or can be configured to show all)
-        # For now, let's just show the trajectory to the closest pocket for clarity
-        best_pocket = None
-        min_dist = float('inf')
-
+        # Draw trajectories to ALL 6 pockets
         for pocket in self.pockets:
-            p_pos = pocket.get_position()
-            d = distance(target_pos, p_pos)
-            if d < min_dist:
-                min_dist = d
-                best_pocket = p_pos
+            pocket_pos = pocket.get_position()
 
-        if best_pocket:
-            # 1. Line from Target to Pocket
+            # 1. Line to Pocket
             l1 = self.canvas.create_line(
-                target_pos[0], target_pos[1], best_pocket[0], best_pocket[1],
-                fill="lime", width=2
+                target_pos[0], target_pos[1], pocket_pos[0], pocket_pos[1],
+                fill="lime", width=1, dash=(2, 4)
             )
             self.trajectory_lines.append(l1)
 
-            # 2. Calculate Ghost Ball Position
-            ghost_pos = calculate_ghost_ball_pos(target_pos, best_pocket, self.ball_diameter)
-
-            # 3. Draw Ghost Ball
-            r = self.target_ball.radius
-            self.ghost_ball_id = self.canvas.create_oval(
+            # 2. Ghost Ball
+            ghost_pos = calculate_ghost_ball_pos(target_pos, pocket_pos, self.ball_diameter)
+            r = self.selected_ball.radius
+            gb = self.canvas.create_oval(
                 ghost_pos[0] - r, ghost_pos[1] - r,
                 ghost_pos[0] + r, ghost_pos[1] + r,
-                outline="white", width=2, dash=(2, 2)
+                outline="white", width=1, dash=(2, 2)
             )
+            self.trajectory_lines.append(gb)
 
-            # 4. Draw Aim Line (from Ghost Ball extending outwards)
-            # A line showing where the cue ball should come from
-            # Vector from Pocket to Target (reverse of Target to Pocket)
-            vec_p_to_t = subtract_vectors(target_pos, best_pocket)
+            # 3. Aim Line (extending backwards)
+            vec_p_to_t = subtract_vectors(target_pos, pocket_pos)
             direction = normalize_vector(vec_p_to_t)
-
-            # Extend aim line by some length (e.g. 200 pixels)
-            aim_length = 300
+            aim_length = 150 # Shorter for all 6 to avoid clutter
             aim_end = add_vectors(ghost_pos, scale_vector(direction, aim_length))
 
-            self.aim_line_id = self.canvas.create_line(
+            al = self.canvas.create_line(
                 ghost_pos[0], ghost_pos[1], aim_end[0], aim_end[1],
                 fill="red", width=2, arrow=tk.FIRST
             )
+            self.trajectory_lines.append(al)
 
 if __name__ == "__main__":
     root = tk.Tk()

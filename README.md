@@ -1,21 +1,32 @@
 # Pool Guideline Overlay
 
-This Python script creates a transparent overlay on your screen to help visualize pool shots. It is designed to work over any pool game or website.
+This Python script creates a transparent overlay on your screen to help visualize pool shots. It includes computer vision features to automatically detect balls and calculate trajectories.
 
 ## Features
 
-- **Moveable Pockets**: 6 drag-and-drop circles to define the table boundaries.
-- **Table Guidelines**: Dashed lines connecting the pockets to visualize the table edges.
-- **Target Ball Marker**: A cyan circle to place over the object ball you intend to hit.
-- **Trajectory Calculation**: Automatically calculates and draws:
-  - The path from the Target Ball to the nearest Pocket.
-  - The **Ghost Ball** position (where the Cue Ball must impact).
-  - An **Aim Line** indicating the required approach angle for the Cue Ball.
+- **Auto-Detection**: Scans the screen to find pool balls using Computer Vision.
+- **Trajectory Calculation**: Select any detected ball to see:
+  - Paths to **all 6 pockets**.
+  - The "Ghost Ball" aiming point for each pocket.
+  - The aiming line for the Cue Ball.
+- **Moveable Pockets**: Drag circles to align the overlay with your game's table.
+- **Tuning**: Adjust detection sensitivity for different ball sizes.
 
 ## Requirements
 
 - Python 3.x
 - Tkinter (usually included with Python)
+- OpenCV (cv2)
+- NumPy
+- MSS (for screen capture)
+
+## Installation
+
+1. Install the required Python packages:
+   ```bash
+   pip install opencv-python numpy mss
+   ```
+   *(Note: You can use `opencv-python-headless` if you don't need OpenCV's UI tools, which saves space.)*
 
 ## How to Run
 
@@ -28,19 +39,23 @@ This Python script creates a transparent overlay on your screen to help visualiz
 
 ## Usage
 
-1. **Align Pockets**: Drag the 6 black circles to match the pockets of the pool table on your screen. The white dashed lines help align the walls.
-2. **Set Target**: Drag the **Cyan** circle (Target Marker) over the ball you want to sink.
-3. **View Guidelines**:
-   - The **Green Line** shows the path to the nearest hole.
-   - The **White Dashed Circle** is the "Ghost Ball" position. You need to aim your cue ball so it occupies this space at the moment of impact.
-   - The **Red Line** shows the line you should aim along.
+1. **Align Pockets**: Drag the 6 black circles to match the pockets of the pool table on your screen.
+2. **Scan Screen**: Press **`s`** to scan the table. The overlay will briefly flicker as it captures the screen.
+3. **Select Ball**: Click on any **Orange** circle (detected ball). It will turn **Cyan**, and lines will appear showing the shot path to every pocket.
+4. **Tune Detection** (If balls aren't detected):
+   - Press **`Up Arrow`** to increase the expected ball radius.
+   - Press **`Down Arrow`** to decrease the expected ball radius.
+   - Re-scan with `s` after adjusting.
 
 ## Controls
 
-- **Left Click + Drag**: Move circles.
-- **'q' or 'Esc'**: Quit the overlay.
+- **`s`**: Scan for balls.
+- **Left Click + Drag**: Move pockets manually.
+- **Left Click**: Select a detected ball.
+- **`Up/Down Arrows`**: Adjust detection size.
+- **`q`** or **`Esc`**: Quit.
 
 ## Troubleshooting
 
-- **Transparency on Windows**: The script uses a specific background color (`grey15`) and sets it to be transparent. If this conflicts with the game colors, you can edit the `bg_color` variable in the script.
-- **Transparency on Mac/Linux**: The script uses window-wide alpha transparency (`-alpha`). You can adjust the transparency level in the script (default is 0.5) if it's too dark or too light.
+- **Transparency on Windows**: The script uses a specific background color (`grey15`) and sets it to be transparent.
+- **Transparency on Mac/Linux**: The script uses window-wide alpha transparency (`-alpha`). You can adjust this in the code if needed.
